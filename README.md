@@ -35,7 +35,7 @@ func main() {
 	}, []ga.Event{
 		{
 			Name: "custom-event",
-			Params: map[string]interface{}{
+			Params: ga.Params{
 				"category": "something",
 				"project":  "whatever",
 			},
