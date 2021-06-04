@@ -1,108 +1,115 @@
 package ga
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
 
 const (
 	DefaultHTTPClientTimeout = 5 * time.Second
-	Endpoint                 = "https://www.google-analytics.com/collect"
-	ProtocolVersion          = "1"
+	Endpoint                 = "https://www.google-analytics.com/mp/collect?api_secret=%s"
 	UserAgent                = "github.com/silinternational/ga-event-tracker"
 )
 
+// gaEventBody represents the POST body for reporting events to GA
+type gaEventBody struct {
+	UserID string  `json:"user_id,omitempty"`
+	Events []Event `json:"events"`
+}
+
+type Meta struct {
+	// APISecret - [REQUIRED] An API SECRET generated in the Google Analytics UI. To create a new secret, navigate to:
+	// Admin > Data Streams > choose your stream > Measurement Protocol > Create
+	APISecret string
+
+	// UserID - [OPTIONAL] A unique identifier for a user
+	UserID string
+}
+
+func (m *Meta) Validate() error {
+	if m.APISecret == "" {
+		return fmt.Errorf("APISecret cannot be empty")
+	}
+
+	return nil
+}
+
+type Params map[string]interface{}
+
 // Event holds the event specific values as well as standard values required for every call to to the measurement protocol
 type Event struct {
-	// TrackingID - [REQUIRED] The GA property ID, example: UA-123456-1
-	TrackingID string
+	// Name - [REQUIRED] Name of event
+	Name string
 
-	// ClientID - [REQUIRED] A unique identifier for the user or thing you want this event attached to.
-	// For example we use this library to track events for pull request merges so we send the repository name through
-	// as the ClientID
-	ClientID string
-
-	// Category - [REQUIRED] Specifies the event category. Must not be empty.
-	Category string
-
-	// Action - [REQUIRED] Specifies the event action. Must not be empty.
-	Action string
-
-	// Label - [OPTIONAL] Specifies the event label.
-	Label string
-
-	// Value - [OPTIONAL] Specifies the event value. Values must be non-negative.
-	Value int
+	// Params - [OPTIONAL] - Any additional parameters to attach to event
+	Params Params
 }
 
-func (e *Event) IsValid() (bool, error) {
-	if e.TrackingID == "" || !strings.HasPrefix(e.TrackingID, "UA") {
-		return false, fmt.Errorf("TrackingID cannot be empty and must start with UA")
+func (e *Event) Validate() error {
+	if e.Name == "" {
+		return fmt.Errorf("name cannot be empty")
 	}
 
-	if e.ClientID == "" {
-		return false, fmt.Errorf("ClientID cannot be empty")
+	if isStringInSlice(e.Name, ReservedEventNames) {
+		return fmt.Errorf("the event name %s is reserved by Google Analytics", e.Name)
 	}
 
-	if e.Category == "" {
-		return false, fmt.Errorf("category cannot be empty")
+	for key := range e.Params {
+		for _, prefix := range ReservedParamPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				return fmt.Errorf("event %s has param with reserved prefix %s, param: %s", e.Name, prefix, key)
+			}
+		}
 	}
 
-	if e.Action == "" {
-		return false, fmt.Errorf("action cannot be empty")
-	}
-
-	if e.Value < 0 {
-		return false, fmt.Errorf("value cannot be negative")
-	}
-
-	return true, nil
+	return nil
 }
 
-func SendEvent(e Event) error {
-	if isValid, err := e.IsValid(); !isValid {
+func SendEvent(meta Meta, events []Event) error {
+	if err := meta.Validate(); err != nil {
 		return err
 	}
 
-	values := url.Values{
-		"t":   []string{"event"},
-		"v":   []string{ProtocolVersion},
-		"tid": []string{e.TrackingID},
-		"cid": []string{e.ClientID},
-		"ec":  []string{e.Category},
-		"el":  []string{e.Label},
+	for i, ev := range events {
+		if err := ev.Validate(); err != nil {
+			return fmt.Errorf("validation error for event #%v: %s", i, err)
+		}
 	}
 
-	if e.Action != "" {
-		values.Set("ea", e.Action)
+	gaEv := gaEventBody{
+		UserID: meta.UserID,
+		Events: events,
 	}
 
-	if e.Value != 0 {
-		values.Set("ev", strconv.Itoa(e.Value))
+	// URL encode values for payload
+	body, err := json.Marshal(gaEv)
+	if err != nil {
+		return fmt.Errorf("uanble to marshal event to json: %s", err)
 	}
-
-	body := values.Encode()
 
 	c := &http.Client{
 		Timeout: DefaultHTTPClientTimeout,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, Endpoint, strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf(Endpoint, meta.APISecret), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("error creating new http request: %s", err)
 	}
 	req.Header.Set("User-Agent", UserAgent)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 
 	res, err := c.Do(req)
 	if err != nil {
 		return fmt.Errorf("error calling to Google Analytics: %s", err)
 	}
+
+	log.Printf("API called, response code: %v", res.StatusCode)
 
 	if res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices {
 		return nil
@@ -115,4 +122,48 @@ func SendEvent(e Event) error {
 	}
 
 	return fmt.Errorf("got error calling Google Analytics [status %v]: %s", res.StatusCode, string(resBody))
+}
+
+// ReservedEventNames - names reserved by GA, cannot be used for custom events
+var ReservedEventNames = []string{
+	"ad_activeview",
+	"ad_click",
+	"ad_exposure",
+	"ad_impression",
+	"ad_query",
+	"adunit_exposure",
+	"app_clear_data",
+	"app_install",
+	"app_update",
+	"app_remove",
+	"error",
+	"first_open",
+	"first_visit",
+	"in_app_purchase",
+	"notification_dismiss",
+	"notification_foreground",
+	"notification_open",
+	"notification_receive",
+	"os_update",
+	"screen_view",
+	"session_start",
+	"user_engagement",
+}
+
+var ReservedParamPrefixes = []string{
+	"google_",
+	"ga_",
+	"firebase_",
+}
+
+// IsStringInSlice iterates over a slice of strings, looking for the given
+// string. If found, true is returned. Otherwise, false is returned.
+func isStringInSlice(needle string, haystack []string) bool {
+	for _, hs := range haystack {
+		if needle == hs {
+			return true
+		}
+	}
+
+	return false
 }
