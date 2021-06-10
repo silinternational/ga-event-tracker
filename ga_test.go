@@ -108,11 +108,13 @@ func TestSendEvent(t *testing.T) {
 			name: "valid event, no params",
 			args: args{
 				meta: Meta{
-					APISecret: os.Getenv("GA_API_SECRET"),
+					APISecret:     os.Getenv("GA_API_SECRET"),
+					ClientID:      "testing123",
+					MeasurementID: os.Getenv("GA_MEASUREMENT_ID"),
 				},
 				events: []Event{
 					{
-						Name:   "test-event-no-params",
+						Name:   "test_event_no_params",
 						Params: nil,
 					},
 				},
@@ -123,11 +125,13 @@ func TestSendEvent(t *testing.T) {
 			name: "valid event, with params",
 			args: args{
 				meta: Meta{
-					APISecret: os.Getenv("GA_API_SECRET"),
+					APISecret:     os.Getenv("GA_API_SECRET"),
+					ClientID:      "testing123",
+					MeasurementID: os.Getenv("GA_MEASUREMENT_ID"),
 				},
 				events: []Event{
 					{
-						Name: "test-event-with-params",
+						Name: "test_event_with_params",
 						Params: Params{
 							"project":     "ga-event-tracking",
 							"environment": "dev",

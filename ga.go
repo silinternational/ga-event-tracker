@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -13,20 +12,28 @@ import (
 
 const (
 	DefaultHTTPClientTimeout = 5 * time.Second
-	Endpoint                 = "https://www.google-analytics.com/mp/collect?api_secret=%s"
+	Endpoint                 = "https://www.google-analytics.com/mp/collect?api_secret=%s&measurement_id=%s"
 	UserAgent                = "github.com/silinternational/ga-event-tracker"
 )
 
 // gaEventBody represents the POST body for reporting events to GA
 type gaEventBody struct {
-	UserID string  `json:"user_id,omitempty"`
-	Events []Event `json:"events"`
+	ClientID string  `json:"client_id"`
+	UserID   string  `json:"user_id,omitempty"`
+	Events   []Event `json:"events"`
 }
 
 type Meta struct {
 	// APISecret - [REQUIRED] An API SECRET generated in the Google Analytics UI. To create a new secret, navigate to:
 	// Admin > Data Streams > choose your stream > Measurement Protocol > Create
 	APISecret string
+
+	// MeasurementID - [REQUIRED] Measurement ID. The identifier for a Data Stream. Found in the Google Analytics UI under:
+	// Admin > Data Streams > choose your stream > Measurement ID >
+	MeasurementID string
+
+	// ClientID - [REQUIRED] Uniquely identifies a user instance of a web client.
+	ClientID string
 
 	// UserID - [OPTIONAL] A unique identifier for a user
 	UserID string
@@ -44,11 +51,11 @@ type Params map[string]interface{}
 
 // Event holds the event specific values as well as standard values required for every call to to the measurement protocol
 type Event struct {
-	// Name - [REQUIRED] Name of event
-	Name string
+	// Name - [REQUIRED] Name of event, alphanumeric and underscores only.
+	Name string `json:"name"`
 
 	// Params - [OPTIONAL] - Any additional parameters to attach to event
-	Params Params
+	Params Params `json:"params,omitempty"`
 }
 
 func (e *Event) Validate() error {
@@ -83,8 +90,9 @@ func SendEvent(meta Meta, events []Event) error {
 	}
 
 	gaEv := gaEventBody{
-		UserID: meta.UserID,
-		Events: events,
+		ClientID: meta.ClientID,
+		UserID:   meta.UserID,
+		Events:   events,
 	}
 
 	// URL encode values for payload
@@ -97,7 +105,7 @@ func SendEvent(meta Meta, events []Event) error {
 		Timeout: DefaultHTTPClientTimeout,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf(Endpoint, meta.APISecret), bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf(Endpoint, meta.APISecret, meta.MeasurementID), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("error creating new http request: %s", err)
 	}
@@ -109,16 +117,14 @@ func SendEvent(meta Meta, events []Event) error {
 		return fmt.Errorf("error calling to Google Analytics: %s", err)
 	}
 
-	log.Printf("API called, response code: %v", res.StatusCode)
-
-	if res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices {
-		return nil
-	}
-
 	var resBody []byte
 	resBody, err = ioutil.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("did not get OK response, got code %v, unable to read response body: %s", res.StatusCode, err)
+	}
+
+	if res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices {
+		return nil
 	}
 
 	return fmt.Errorf("got error calling Google Analytics [status %v]: %s", res.StatusCode, string(resBody))
