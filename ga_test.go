@@ -2,18 +2,22 @@ package ga
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
 func TestMeta_Validate(t *testing.T) {
 	type fields struct {
-		APISecret string
-		UserID    string
+		APISecret     string
+		ClientID      string
+		MeasurementID string
+		UserID        string
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
+		name        string
+		fields      fields
+		wantErr     bool
+		wantInError string
 	}{
 		{
 			name:    "empty meta",
@@ -21,21 +25,41 @@ func TestMeta_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "valid",
+			name: "missing clientid",
+			fields: fields{
+				APISecret:     "something",
+				MeasurementID: "blahblah",
+			},
+			wantErr:     true,
+			wantInError: "ClientID",
+		},
+		{
+			name: "missing measurementid",
 			fields: fields{
 				APISecret: "something",
+				ClientID:  "blahblah",
 			},
-			wantErr: false,
+			wantErr:     true,
+			wantInError: "MeasurementID",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Meta{
-				APISecret: tt.fields.APISecret,
-				UserID:    tt.fields.UserID,
+				APISecret:     tt.fields.APISecret,
+				ClientID:      tt.fields.ClientID,
+				MeasurementID: tt.fields.MeasurementID,
+				UserID:        tt.fields.UserID,
 			}
-			if err := m.Validate(); (err != nil) != tt.wantErr {
+
+			err := m.Validate()
+			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.wantInError != "" {
+				if !strings.Contains(err.Error(), tt.wantInError) {
+					t.Errorf("expected %s in error, got %s", tt.wantInError, err.Error())
+				}
 			}
 		})
 	}

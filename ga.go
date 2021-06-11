@@ -44,6 +44,14 @@ func (m *Meta) Validate() error {
 		return fmt.Errorf("APISecret cannot be empty")
 	}
 
+	if m.MeasurementID == "" {
+		return fmt.Errorf("MeasurementID cannot be empty")
+	}
+
+	if m.ClientID == "" {
+		return fmt.Errorf("ClientID cannot be empty")
+	}
+
 	return nil
 }
 
