@@ -32,9 +32,11 @@ import (
 func main() {
 	err := ga.SendEvent(ga.Meta{
 		APISecret: "asdf1234",
+		ClientID: "abc1234",
+		MeasurementID: "G-N1235ZM",
 	}, []ga.Event{
 		{
-			Name: "custom-event",
+			Name: "custom_event",
 			Params: ga.Params{
 				"category": "something",
 				"project":  "whatever",
