@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
 
 const (
 	DefaultHTTPClientTimeout = 5 * time.Second
+	DefaultParamsEnvVar      = "GA_EVENT_PARAMS"
 	Endpoint                 = "https://www.google-analytics.com/mp/collect?api_secret=%s&measurement_id=%s"
 	UserAgent                = "github.com/silinternational/ga-event-tracker"
 )
@@ -180,4 +182,25 @@ func isStringInSlice(needle string, haystack []string) bool {
 	}
 
 	return false
+}
+
+func GetParamsFromEnv(varName string, required bool) (Params, error) {
+	if varName == "" {
+		varName = DefaultParamsEnvVar
+	}
+
+	value := os.Getenv(varName)
+	if value == "" && !required {
+		return nil, nil
+	}
+	if value == "" && required {
+		return nil, fmt.Errorf("required params env var %s is empty", varName)
+	}
+
+	var params Params
+	if err := json.Unmarshal([]byte(value), &params); err != nil {
+		return nil, fmt.Errorf("Value of params env var %s does not appear to be JSON, error: %s", varName, err)
+	}
+
+	return params, nil
 }
