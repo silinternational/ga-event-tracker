@@ -1,0 +1,5 @@
+app:
+  build:
+    image: silintl/ga-event-tracker
+    context: ./
+    dockerfile: ./Dockerfile
