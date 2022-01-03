@@ -19,7 +19,7 @@ func main() {
 
 	name := os.Getenv("GA_EVENT_NAME")
 	if name == "" {
-		log.Fatal("Env var EVENT_NAME is required")
+		log.Fatal("Env var GA_EVENT_NAME is required")
 	}
 
 	params, err := ga.GetParamsFromEnv(ga.DefaultParamsEnvVar, false)
