@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -15,6 +16,7 @@ const (
 	DefaultHTTPClientTimeout = 5 * time.Second
 	DefaultParamsEnvVar      = "GA_EVENT_PARAMS"
 	Endpoint                 = "https://www.google-analytics.com/mp/collect?api_secret=%s&measurement_id=%s"
+	DebugEndpoint            = "https://www.google-analytics.com/debug/mp/collect?api_secret=%s&measurement_id=%s"
 	UserAgent                = "github.com/silinternational/ga-event-tracker"
 )
 
@@ -88,6 +90,36 @@ func (e *Event) Validate() error {
 	return nil
 }
 
+func callGA(endpoint string, reqBody []byte, meta Meta) (*http.Response, string, error) {
+	c := &http.Client{
+		Timeout: DefaultHTTPClientTimeout,
+	}
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf(endpoint, meta.APISecret, meta.MeasurementID),
+		bytes.NewReader(reqBody),
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("error creating new http request: %s", err)
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := c.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("error calling to Google Analytics: %s", err)
+	}
+
+	var resBody []byte
+	resBody, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		return res, "", fmt.Errorf("error reading response body: %s", err)
+	}
+
+	return res, fmt.Sprintf("%s", resBody), nil
+}
+
 func SendEvent(meta Meta, events []Event) error {
 	if err := meta.Validate(); err != nil {
 		return err
@@ -111,26 +143,17 @@ func SendEvent(meta Meta, events []Event) error {
 		return fmt.Errorf("uanble to marshal event to json: %s", err)
 	}
 
-	c := &http.Client{
-		Timeout: DefaultHTTPClientTimeout,
-	}
-
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf(Endpoint, meta.APISecret, meta.MeasurementID), bytes.NewReader(body))
+	// Call debug endpoint. The GA4 api fails silently, otherwise.
+	res, resBody, err := callGA(DebugEndpoint, body, meta)
 	if err != nil {
-		return fmt.Errorf("error creating new http request: %s", err)
+		return fmt.Errorf("error making call to the debug endpoint: %s", err)
 	}
-	req.Header.Set("User-Agent", UserAgent)
-	req.Header.Set("Content-Type", "application/json")
+	log.Printf("Results of debug test call. Status: %d. Body: %s", res.StatusCode, resBody)
 
-	res, err := c.Do(req)
+	// Call non-debug endpoint
+	res, resBody, err = callGA(Endpoint, body, meta)
 	if err != nil {
-		return fmt.Errorf("error calling to Google Analytics: %s", err)
-	}
-
-	var resBody []byte
-	resBody, err = ioutil.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("did not get OK response, got code %v, unable to read response body: %s", res.StatusCode, err)
+		return fmt.Errorf("error making call to the non-debug endpoint: %s", err)
 	}
 
 	if res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices {
