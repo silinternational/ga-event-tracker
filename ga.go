@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -112,7 +112,7 @@ func callGA(endpoint string, reqBody []byte, meta Meta) (*http.Response, string,
 	}
 
 	var resBody []byte
-	resBody, err = ioutil.ReadAll(res.Body)
+	resBody, err = io.ReadAll(res.Body)
 	if err != nil {
 		return res, "", fmt.Errorf("error reading response body: %s", err)
 	}
