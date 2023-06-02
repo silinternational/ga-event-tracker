@@ -22,6 +22,7 @@ jobs:
         name: Set up Go
         uses: actions/setup-go@v2
         with:
+          # Ensure this version tracks with go.mod and Dockerfile
           go-version: 1.19
       -
         name: Run GoReleaser
